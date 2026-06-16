@@ -1,0 +1,16 @@
+{
+  "name": "Studio CinéAI",
+  "short_name": "CinéAI",
+  "description": "Créez des films professionnels avec l'IA — Veo 3, Runway, Kling",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a14",
+  "theme_color": "#0a0a14",
+  "orientation": "any",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "categories": ["productivity", "entertainment"],
+  "lang": "fr"
+}
