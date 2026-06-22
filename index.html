@@ -293,6 +293,9 @@
         <span class="tag tag-blue">120 fps</span>
         <span class="tag tag-blue">4 min max</span>
       </div>
+      <div style="background:rgba(245,166,35,0.12);border:0.5px solid rgba(245,166,35,0.35);border-radius:8px;padding:9px 10px;margin-top:10px;font-size:11px;color:#f5c777;line-height:1.5">
+        ⚠️ <strong>Pas encore connecté.</strong> Veo 3 nécessite un compte Google Cloud avec facturation active (Vertex AI) — une simple clé Gemini gratuite ne donne pas accès à la génération vidéo. Utilisez Runway ML ou Kling AI ci-dessous, qui sont pleinement fonctionnels avec vos clés actuelles.
+      </div>
     </div>
 
     <div class="card">
@@ -365,11 +368,11 @@
       <div class="input-group">
         <label>Moteur IA</label>
         <select id="gen-engine">
-          <option value="veo3">🌐 Veo 3 — Google (Audio natif · 8K)</option>
-          <option value="runway">🪄 Runway ML (Cinématique · 4K)</option>
-          <option value="kling">🌊 Kling AI (Visages · 4K)</option>
-          <option value="pika">🔮 Pika Labs (Rapide)</option>
-          <option value="sora">🎯 Sora — OpenAI (Long)</option>
+          <option value="runway" selected>🪄 Runway ML — Fonctionnel (Cinématique · 4K)</option>
+          <option value="kling">🌊 Kling AI — Fonctionnel (Visages · 4K)</option>
+          <option value="veo3">🌐 Veo 3 — Google (nécessite Google Cloud)</option>
+          <option value="pika">🔮 Pika Labs (non connecté)</option>
+          <option value="sora">🎯 Sora — OpenAI (non connecté)</option>
         </select>
       </div>
 

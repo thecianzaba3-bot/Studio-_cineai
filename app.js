@@ -204,35 +204,130 @@ const veoMsgs = [
   'Vidéo prête !'
 ];
 
-function startGeneration() {
+const names = { veo3: 'Veo 3', runway: 'Runway ML', kling: 'Kling AI', pika: 'Pika Labs', sora: 'Sora' };
+
+async function startGeneration() {
   const prompt = document.getElementById('gen-prompt').value.trim();
   if (!prompt) { notify('⚠️ Ajoutez une description de scène'); return; }
   const engine = document.getElementById('gen-engine').value;
   const res = document.getElementById('gen-res').value;
   const dur = document.getElementById('gen-dur').value;
 
+  // Veo 3 nécessite Google Cloud + facturation — pas encore disponible via clé Gemini simple
+  if (engine === 'veo3') {
+    const veoKey = localStorage.getItem('key_veo3');
+    if (!veoKey) { notify('⚠️ Configurez votre clé Veo 3 dans ⚙️ API'); return; }
+    notify('⚠️ Veo 3 nécessite un compte Google Cloud avec facturation active (Vertex AI). Votre clé Gemini gratuite ne donne pas accès à la génération vidéo. Utilisez Runway ou Kling pour générer réellement.');
+    return;
+  }
+
+  if (engine === 'pika' || engine === 'sora') {
+    notify('⚠️ ' + names[engine] + ' n\'est pas encore connecté. Utilisez Runway ou Kling.');
+    return;
+  }
+
+  const apiKey = localStorage.getItem('key_' + engine);
+  if (!apiKey) { notify('⚠️ Configurez votre clé ' + names[engine] + ' dans ⚙️ API'); return; }
+
   document.getElementById('gen-progress').style.display = 'block';
   document.getElementById('gen-result').style.display = 'none';
   document.getElementById('gen-btn').disabled = true;
+  document.getElementById('gen-status-txt').textContent = 'Envoi de la demande à ' + names[engine] + '...';
+  document.getElementById('gen-bar').style.width = '5%';
+  document.getElementById('gen-pct').textContent = '5%';
 
-  let p = 0, msgIdx = 0;
-  if (genTimer) clearInterval(genTimer);
-  genTimer = setInterval(() => {
-    p = Math.min(100, p + (engine === 'veo3' ? 1 : 1.5));
-    const pct = Math.round(p);
-    document.getElementById('gen-bar').style.width = pct + '%';
-    document.getElementById('gen-pct').textContent = pct + '%';
-    const idx = Math.min(veoMsgs.length - 1, Math.floor(p / 14));
-    if (idx !== msgIdx) { msgIdx = idx; document.getElementById('gen-status-txt').textContent = engine === 'veo3' ? veoMsgs[idx] : 'Génération en cours...'; }
-    if (p >= 100) {
-      clearInterval(genTimer);
-      document.getElementById('gen-btn').disabled = false;
-      const names = { veo3: 'Veo 3', runway: 'Runway ML', kling: 'Kling AI', pika: 'Pika Labs', sora: 'Sora' };
-      document.getElementById('gen-result-info').textContent = `${res} · ${dur} · ${names[engine]} · Audio ${engine === 'veo3' ? 'inclus' : 'non inclus'}`;
-      document.getElementById('gen-result').style.display = 'block';
-      notify('✅ Vidéo générée avec ' + names[engine]);
+  try {
+    const durationSec = parseInt(dur) || 5;
+    const isVertical = res.includes('Vertical');
+    const ratio = engine === 'runway' ? (isVertical ? '720:1280' : '1280:720') : (isVertical ? '9:16' : '16:9');
+
+    const createResp = await fetch('/api/generate-' + engine, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, apiKey, duration: Math.min(durationSec, 10), ratio })
+    });
+    const createData = await createResp.json();
+
+    if (!createResp.ok) {
+      throw new Error(createData.error || 'Erreur lors de la création de la tâche');
     }
-  }, engine === 'veo3' ? 80 : 55);
+
+    const taskId = createData.taskId;
+    document.getElementById('gen-status-txt').textContent = 'Génération en cours sur les serveurs ' + names[engine] + '...';
+    document.getElementById('gen-bar').style.width = '20%';
+    document.getElementById('gen-pct').textContent = '20%';
+
+    await pollGenerationStatus(engine, taskId, apiKey, res, dur);
+
+  } catch (err) {
+    document.getElementById('gen-btn').disabled = false;
+    document.getElementById('gen-progress').style.display = 'none';
+    notify('❌ ' + err.message);
+  }
+}
+
+async function pollGenerationStatus(engine, taskId, apiKey, res, dur) {
+  let attempts = 0;
+  const maxAttempts = 60; // ~5 minutes max (5s entre chaque vérification)
+
+  const poll = async () => {
+    attempts++;
+    try {
+      const checkResp = await fetch('/api/check-' + engine, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId, apiKey })
+      });
+      const data = await checkResp.json();
+
+      if (!checkResp.ok) throw new Error(data.error || 'Erreur de vérification');
+
+      const isDone = engine === 'runway' ? data.status === 'SUCCEEDED' : data.status === 'succeed';
+      const isFailed = engine === 'runway' ? data.status === 'FAILED' : data.status === 'failed';
+      const isProcessing = engine === 'runway'
+        ? ['PENDING', 'RUNNING', 'THROTTLED'].includes(data.status)
+        : ['submitted', 'processing'].includes(data.status);
+
+      // Progression visuelle approximative
+      const pct = Math.min(95, 20 + Math.round((attempts / maxAttempts) * 75));
+      document.getElementById('gen-bar').style.width = pct + '%';
+      document.getElementById('gen-pct').textContent = pct + '%';
+
+      if (isDone) {
+        document.getElementById('gen-bar').style.width = '100%';
+        document.getElementById('gen-pct').textContent = '100%';
+        document.getElementById('gen-btn').disabled = false;
+        document.getElementById('gen-result-info').textContent = `${res} · ${dur} · ${names[engine]} · Vidéo réelle générée`;
+        document.getElementById('gen-result').style.display = 'block';
+        const videoUrl = data.videoUrl;
+        if (videoUrl) {
+          window.lastGeneratedVideo = videoUrl;
+          const info = document.getElementById('gen-result-info');
+          info.innerHTML += `<br><a href="${videoUrl}" target="_blank" style="color:var(--blue)">🎬 Voir la vidéo générée</a>`;
+        }
+        notify('✅ Vidéo générée avec ' + names[engine] + ' !');
+        return;
+      }
+
+      if (isFailed) {
+        throw new Error('La génération a échoué : ' + (data.failure || data.failureMsg || 'raison inconnue'));
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error('Délai dépassé — la génération prend plus de temps que prévu. Réessayez dans quelques minutes.');
+      }
+
+      // Continue le polling
+      setTimeout(poll, 5000);
+
+    } catch (err) {
+      document.getElementById('gen-btn').disabled = false;
+      document.getElementById('gen-progress').style.display = 'none';
+      notify('❌ ' + err.message);
+    }
+  };
+
+  await poll();
 }
 
 function generateScene(idx) {
